@@ -10,5 +10,5 @@
   "orientation": "any",
   "background_color": "#080a09",
   "theme_color": "#080a09",
-  "icons": [{"src":"assets/caffee-1010-red-logo.png","sizes":"1254x1254","type":"image/png","purpose":"any maskable"}]
+  "icons": [{"src":"assets/caffee-1010-red-logo.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]
 }
