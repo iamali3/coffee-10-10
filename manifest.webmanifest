@@ -1,0 +1,14 @@
+{
+  "name": "Coffee 10:10 — Digital Menu",
+  "short_name": "10:10",
+  "description": "The official digital menu for Coffee 10:10 in Basra.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080a09",
+  "theme_color": "#080a09",
+  "icons": [{"src":"assets/caffee-1010-red-logo.png","sizes":"1254x1254","type":"image/png","purpose":"any maskable"}]
+}
