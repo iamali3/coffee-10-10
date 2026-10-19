@@ -1,4 +1,4 @@
-const CACHE='coffee-1010-github-pages-v34';
+const CACHE='coffee-1010-github-pages-v36';
 const CORE=['./','./index.html','./manifest.webmanifest','./assets/caffee-1010-red-logo.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
