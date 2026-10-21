@@ -43,17 +43,18 @@
   }else{try{const cached=JSON.parse(localStorage.getItem(storageKey));if(cached)apply(cached);}catch{}}
   async function refresh(){
     if(refreshing)return;refreshing=true;
+    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
     try{
       // A fresh URL also bypasses older installed service-worker cache entries.
       const endpoint=preview?'api/owner?action=preview':`api/menu?sync=${Date.now()}`;
-      const response=await fetch(endpoint,{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(10000)});
+      const response=await fetch(endpoint,{cache:'no-store',credentials:'same-origin',signal:controller.signal});
       if(!response.ok)throw new Error(String(response.status));
       const result=await response.json();apply(result.content);
     }catch(error){
       if(preview){document.querySelector('.owner-preview-banner').textContent='Preview unavailable. Sign in and save your draft, then reopen Preview.';return;}
       // Static hosting (including GitHub Pages) keeps the shipped menu as its fallback.
       if(error.message==='404'||location.protocol==='file:')try{const response=await fetch('data/menu.json');if(response.ok)apply(await response.json());}catch{}
-    }finally{refreshing=false;}
+    }finally{clearTimeout(timeout);refreshing=false;}
   }
   refresh();if(!preview){
     const visibleRefresh=()=>{if(document.visibilityState==='visible')refresh();};
