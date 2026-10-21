@@ -18,7 +18,9 @@ module.exports=async(req,res)=>{
       const token=auth.token();res.setHeader('Set-Cookie',auth.cookie(req,token));return json(res,200,{ok:true});
     }
     if(req.method==='GET'){
-      auth.requireSession(req);const {state}=await store.read();
+      auth.requireSession(req);
+      if(action==='diagnostics')return json(res,200,await store.diagnostics());
+      const {state}=await store.read();
       if(action==='draft'||action==='preview')return json(res,200,summary(state));
       fail('Not found.',404);
     }
