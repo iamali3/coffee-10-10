@@ -1,0 +1,13 @@
+{
+  "name": "coffee-1010",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build-static.js",
+    "dev": "node --env-file-if-exists=.env.local scripts/dev-server.js",
+    "test": "node --test tests/*.test.js",
+    "owner:setup": "node scripts/setup-owner.js"
+  },
+  "dependencies": { "@vercel/blob": "^2.3.0" },
+  "engines": { "node": ">=22" }
+}

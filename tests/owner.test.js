@@ -1,0 +1,56 @@
+'use strict';
+const {test,before,after}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises');
+const os=require('node:os');
+const path=require('node:path');
+const auth=require('../lib/auth');
+const {validateContent,seed}=require('../lib/content');
+const owner=require('../api/owner'),menu=require('../api/menu'),photo=require('../api/photo');
+let directory,cookie,csrf;
+async function call(handler,{action='',method='GET',data,loginCookie=cookie,origin='http://localhost:4180',extra={}}={}){
+  const headers={'host':'localhost:4180','origin':origin,'content-type':'application/json','cookie':loginCookie||'','x-owner-csrf':csrf||'',...extra};
+  const req={url:`/api/test?action=${action}${extra.photoId?'&id='+extra.photoId:''}`,method,headers,body:data,socket:{remoteAddress:'127.0.0.1'}};
+  const result={status:200,headers:{},raw:null};const res={setHeader(k,v){result.headers[k.toLowerCase()]=v;},get statusCode(){return result.status;},set statusCode(v){result.status=v;},end(value){result.raw=value;}};
+  await handler(req,res);try{result.data=JSON.parse(result.raw);}catch{}return result;
+}
+before(async()=>{directory=await fs.mkdtemp(path.join(os.tmpdir(),'coffee-owner-test-'));process.env.OWNER_LOCAL_STORE='1';process.env.OWNER_DATA_DIR=directory;process.env.OWNER_USERNAME='owner';process.env.OWNER_PASSWORD_HASH=await auth.hashPassword('a-test-password-only-123');process.env.OWNER_SESSION_SECRET='test-session-secret-with-more-than-32-characters';delete process.env.VERCEL;});
+after(async()=>{await fs.rm(directory,{recursive:true,force:true});});
+test('seed preserves all 66 current menu items and validates asset paths',()=>{const data=seed();assert.equal(data.items.length,66);assert.equal(data.items.find(p=>p.id==='j13').price,5000);assert.equal(data.items.some(p=>p.id==='e05'),false);assert.equal(new Set(data.items.map(p=>p.id)).size,66);assert.equal(data.items.find(p=>p.id==='h03').ar,'انكليزي');});
+test('password auth, cookies, CSRF, draft privacy, publish, concurrency, rollback and media access',async()=>{
+  assert.equal((await call(owner,{action:'draft',loginCookie:''})).status,401);
+  assert.equal((await call(owner,{action:'login',method:'POST',data:{username:'owner',password:'wrong'}})).status,401);
+  assert.equal((await call(owner,{action:'login',method:'POST',data:{username:'owner',password:'a-test-password-only-123'},origin:'https://attacker.example'})).status,403);
+  const login=await call(owner,{action:'login',method:'POST',data:{username:'owner',password:'a-test-password-only-123'}});assert.equal(login.status,200);assert.match(login.headers['set-cookie'],/HttpOnly; SameSite=Strict/);cookie=login.headers['set-cookie'].split(';')[0];
+  csrf=(await call(owner,{action:'session'})).data.csrf;assert.ok(csrf);
+  const current=(await call(owner,{action:'draft'})).data;const draft=structuredClone(current.content);draft.items[0].price=6500;draft.items[1].hidden=true;draft.items[2].soldOut=true;draft.items[0].descriptionAr='وصف تجريبي';draft.items[0].descriptionEn='<script>alert(1)</script>';
+  assert.equal((await call(owner,{action:'save',method:'POST',data:{content:draft,revision:0},extra:{'x-owner-csrf':'bad'}})).status,403);
+  const saved=await call(owner,{action:'save',method:'POST',data:{content:draft,revision:0}});assert.equal(saved.status,200);assert.equal(saved.data.revision,1);
+  assert.equal((await call(menu)).data.content.items[0].price,5000,'saving a draft cannot change public data');
+  assert.equal((await call(owner,{action:'preview',loginCookie:''})).status,401);
+  assert.equal((await call(owner,{action:'preview'})).data.content.items[0].price,6500);
+  assert.equal((await call(owner,{action:'save',method:'POST',data:{content:draft,revision:0}})).status,409,'stale editor must not overwrite newer changes');
+  const published=await call(owner,{action:'publish',method:'POST',data:{revision:1}});assert.equal(published.status,200);assert.equal(published.data.hasUnpublishedChanges,false);
+  const visible=(await call(menu,{loginCookie:''})).data.content;assert.equal(visible.items[0].price,6500);assert.equal(visible.items.some(p=>p.id===draft.items[1].id),false);assert.equal(visible.items.find(p=>p.id===draft.items[2].id).soldOut,true);
+  const rolled=await call(owner,{action:'rollback',method:'POST',data:{revision:2}});assert.equal(rolled.status,200);assert.equal((await call(menu)).data.content.items[0].price,5000);
+  assert.equal((await call(owner,{action:'upload',method:'POST',data:{data:Buffer.from('<svg><script>bad</script></svg>').toString('base64')}})).status,400);
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/j8AAAAASUVORK5CYII=','base64');
+  const uploaded=await call(owner,{action:'upload',method:'POST',data:{data:png.toString('base64')}});assert.equal(uploaded.status,200);
+  const id=new URL(uploaded.data.image,'http://localhost').searchParams.get('id');
+  assert.equal((await call(photo,{loginCookie:'',extra:{photoId:id}})).status,404,'unpublished photo must remain private');
+  assert.equal((await call(photo,{extra:{photoId:id}})).headers['content-type'],'image/png');
+  const latest=(await call(owner,{action:'draft'})).data;latest.content.items[0].image=uploaded.data.image;
+  assert.equal((await call(owner,{action:'save',method:'POST',data:{revision:latest.revision,content:latest.content}})).status,200);
+  assert.equal((await call(owner,{action:'publish',method:'POST',data:{revision:latest.revision+1}})).status,200);
+  assert.equal((await call(photo,{loginCookie:'',extra:{photoId:id}})).headers['content-type'],'image/png');
+  assert.equal((await call(owner,{action:'logout',method:'POST',data:{}})).status,200);
+  const secret=process.env.OWNER_SESSION_SECRET;process.env.OWNER_SESSION_SECRET='different-secret-longer-than-32-characters';assert.equal((await call(owner,{action:'draft'})).status,401);process.env.OWNER_SESSION_SECRET=secret;
+});
+test('rate limit is persisted and survives new server instances',async()=>{for(let i=0;i<5;i++)assert.equal((await call(owner,{action:'login',method:'POST',data:{username:'owner',password:'wrong'},extra:{'x-forwarded-for':'203.0.113.19'}})).status,401);assert.equal((await call(owner,{action:'login',method:'POST',data:{username:'owner',password:'wrong'},extra:{'x-forwarded-for':'203.0.113.19'}})).status,429);});
+test('server validation rejects corrupt menus, unsafe image URLs, categories and prices',()=>{
+  const duplicate=seed();duplicate.items.push(duplicate.items[0]);assert.throws(()=>validateContent(duplicate),/Duplicate/);
+  const unsafe=seed();unsafe.items[0].image='javascript:alert(1)';assert.throws(()=>validateContent(unsafe),/photo/);
+  const category=seed();category.items[0].cat='missing';assert.throws(()=>validateContent(category),/category/);
+  const price=seed();price.items[0].price=-1;assert.throws(()=>validateContent(price),/price/);
+  const social=seed();social.settings.socialLinks.Instagram='javascript:alert(1)';assert.throws(()=>validateContent(social),/HTTPS/);
+});

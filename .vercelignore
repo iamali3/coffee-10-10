@@ -1,0 +1,5 @@
+.owner-data/
+.env*
+tests/
+OWNER-DASHBOARD.md
+design-system/
