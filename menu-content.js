@@ -3,9 +3,12 @@
   const preview = new URLSearchParams(location.search).has('preview');
   const root = new URL('./', location.href);
   const storageKey = 'coffee-1010-published-v1';
+  let appliedContent='',refreshing=false;
   const groupLabels={hookah:{ar:'الأراكيل',en:'Hookah'},cold:{ar:'بارد',en:'Cold'},hot:{ar:'حار',en:'Hot'},milkshake:{ar:'ميلك شيك',en:'Milkshake'}};
   function apply(content){
     if(!Array.isArray(content?.items)||!Array.isArray(content?.categories)||!content.settings)return;
+    const fingerprint=JSON.stringify(content);if(fingerprint===appliedContent)return;
+    appliedContent=fingerprint;
     const previousGroup=mainKey();
     window.menuCategories=content.categories;
     menu.splice(0,menu.length,...content.items.filter(p=>!p.hidden));
@@ -39,15 +42,26 @@
     const banner=document.createElement('div');banner.className='owner-preview-banner';banner.textContent='PRIVATE DRAFT PREVIEW · معاينة المسودة';document.body.append(banner);
   }else{try{const cached=JSON.parse(localStorage.getItem(storageKey));if(cached)apply(cached);}catch{}}
   async function refresh(){
+    if(refreshing)return;refreshing=true;
     try{
-      const response=await fetch(preview?'api/owner?action=preview':'api/menu',{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(10000)});
+      // A fresh URL also bypasses older installed service-worker cache entries.
+      const endpoint=preview?'api/owner?action=preview':`api/menu?sync=${Date.now()}`;
+      const response=await fetch(endpoint,{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error(String(response.status));
       const result=await response.json();apply(result.content);
     }catch(error){
       if(preview){document.querySelector('.owner-preview-banner').textContent='Preview unavailable. Sign in and save your draft, then reopen Preview.';return;}
       // Static hosting (including GitHub Pages) keeps the shipped menu as its fallback.
       if(error.message==='404'||location.protocol==='file:')try{const response=await fetch('data/menu.json');if(response.ok)apply(await response.json());}catch{}
-    }
+    }finally{refreshing=false;}
   }
-  refresh();if(!preview){window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh();});}
+  refresh();if(!preview){
+    const visibleRefresh=()=>{if(document.visibilityState==='visible')refresh();};
+    window.addEventListener('online',visibleRefresh);
+    window.addEventListener('pageshow',visibleRefresh);
+    window.addEventListener('focus',visibleRefresh);
+    document.addEventListener('visibilitychange',visibleRefresh);
+    setInterval(visibleRefresh,15000);
+    if('serviceWorker'in navigator)navigator.serviceWorker.addEventListener('controllerchange',visibleRefresh);
+  }
 })();

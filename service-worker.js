@@ -1,4 +1,4 @@
-const CACHE='coffee-1010-github-pages-v39';
+const CACHE='coffee-1010-github-pages-v40';
 const CORE=['./','./index.html','./menu-content.js','./owner-menu.css','./data/menu.json','./manifest.webmanifest','./assets/caffee-1010-red-logo.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('coffee-1010-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
@@ -22,7 +22,11 @@ self.addEventListener('fetch',event=>{
     event.respondWith(fetch(event.request).then(response=>{if(response.ok){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put('./index.html',copy));}return response;}).catch(()=>caches.match('./index.html')));return;
   }
   if(relative==='api/menu'||relative==='data/menu.json'){
-    event.respondWith(fetch(event.request).then(response=>{if(!response.ok)throw new Error('Menu unavailable');const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));return response;}).catch(async()=>await caches.match(event.request)||Response.error()));return;
+    const key=relative==='api/menu'?new URL('api/menu',self.registration.scope).href:event.request;
+    event.respondWith(fetch(new Request(event.request,{cache:'no-store'})).then(async response=>{if(!response.ok)throw new Error('Menu unavailable');const cache=await caches.open(CACHE);await cache.put(key,response.clone());return response;}).catch(async()=>await caches.match(key)||Response.error()));return;
+  }
+  if(relative==='menu-content.js'){
+    event.respondWith(fetch(new Request(event.request,{cache:'no-cache'})).then(async response=>{if(!response.ok)throw new Error('Script unavailable');const cache=await caches.open(CACHE);await cache.put(event.request,response.clone());return response;}).catch(async()=>await caches.match(event.request)||Response.error()));return;
   }
   event.respondWith(caches.match(event.request).then(cached=>cached||fetch(event.request).then(response=>{if(response.ok){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));}return response;}).catch(()=>Response.error())));
 });
