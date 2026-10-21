@@ -202,6 +202,6 @@
   function cacheCompleteMenu(registration){const worker=registration.active||registration.waiting||registration.installing;if(!worker)return;const urls=[...new Set(menu.map(imageSrc))];worker.postMessage({type:'CACHE_MENU',urls})}
   window.addEventListener('load',()=>{setTimeout(()=>{document.querySelector('#loader').classList.add('done');document.body.classList.add('page-ready')},220);updateScrollExperience();runWhenIdle(()=>import('./smoke-webgl.js'),2200);if('serviceWorker'in navigator&&!new URLSearchParams(location.search).has('preview'))navigator.serviceWorker.register('service-worker.js').then(registration=>navigator.serviceWorker.ready.then(ready=>runWhenIdle(()=>cacheCompleteMenu(ready),5000))).catch(()=>{})});setLanguage(lang);
   </script>
-  <script src="menu-content.js" defer></script>
+  <script src="menu-content.js?v=40" defer></script>
 </body>
 </html>
